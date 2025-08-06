@@ -81,6 +81,42 @@ jobs:
           # Remove old image
           docker rmi finbotaiagent:latest || true
           
+          # Configure PostgreSQL for Docker access
+          echo "🗄️ Configuring PostgreSQL for Docker access..."
+          sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" /etc/postgresql/*/main/postgresql.conf
+          
+          # Add Docker network ranges to pg_hba.conf
+          sudo tee -a /etc/postgresql/*/main/pg_hba.conf << 'EOF'
+          
+          # Allow connections from Docker bridge networks
+          host    all             all             172.16.0.0/12           md5
+          host    all             all             192.168.0.0/16          md5
+          host    all             all             10.0.0.0/8              md5
+          EOF
+          
+          # Restart PostgreSQL
+          sudo systemctl restart postgresql
+          echo "✅ PostgreSQL configured and restarted"
+          
+          # Create database user and database
+          sudo -u postgres psql -c "CREATE USER ${{ secrets.DB_USERNAME }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';" 2>/dev/null || echo "User already exists"
+          sudo -u postgres psql -c "CREATE DATABASE ${{ secrets.DB_NAME }} OWNER ${{ secrets.DB_USERNAME }};" 2>/dev/null || echo "Database already exists"
+          sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${{ secrets.DB_NAME }} TO ${{ secrets.DB_USERNAME }};"
+          
+          # Create expenses table (no seed data)
+          sudo -u postgres psql -d ${{ secrets.DB_NAME }} -c "
+          CREATE TABLE IF NOT EXISTS expenses (
+              id SERIAL PRIMARY KEY,
+              employee_id VARCHAR(50) NOT NULL,
+              amount DECIMAL(10,2) NOT NULL,
+              category VARCHAR(100) NOT NULL,
+              description TEXT,
+              status VARCHAR(50) DEFAULT 'Pending',
+              submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );" 2>/dev/null || echo "Table already exists"
+          
+          echo "✅ Database and user configured"
+          
           # Create environment file with EC2 internal IP for maximum reliability
           EC2_INTERNAL_IP=$(hostname -I | awk '{print $1}')
           cat > .env << EOF

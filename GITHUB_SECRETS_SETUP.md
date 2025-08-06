@@ -11,7 +11,7 @@ Set these secrets in your GitHub repository: **Settings → Secrets and variable
 | `DB_PASSWORD` | `finbot123` | PostgreSQL password |
 | `DB_NAME` | `finbotdb` | Database name |
 
-**Note:** `DB_HOST` is now automatically set to EC2 internal IP for maximum reliability.
+**Note:** `DB_HOST` is automatically set to EC2 internal IP. PostgreSQL will be automatically configured for Docker access.
 
 ### **EC2 Configuration**
 | Secret Name | Value | Description |
@@ -23,21 +23,24 @@ Set these secrets in your GitHub repository: **Settings → Secrets and variable
 
 ## 🚀 Quick Setup
 
-1. **Get your EC2 internal IP:**
-   ```bash
-   ssh -i your-key.pem ubuntu@98.87.5.107
-   hostname -I
-   ```
-
-2. **Add GitHub Secrets:**
+1. **Add GitHub Secrets:**
    - Go to your GitHub repository
    - Settings → Secrets and variables → Actions
    - Add each secret listed above
 
-3. **Deploy:**
+2. **Deploy:**
    ```bash
    git push origin main
    ```
+
+## ✅ What Happens During Deployment
+
+The GitHub Actions workflow will automatically:
+- ✅ **Configure PostgreSQL** to accept Docker connections
+- ✅ **Create database user** and database
+- ✅ **Create expenses table**
+- ✅ **Set DB_HOST** to EC2 internal IP
+- ✅ **Deploy application** with proper networking
 
 ## ✅ Verification
 
@@ -45,10 +48,11 @@ After deployment, verify:
 - Application accessible at `http://98.87.5.107`
 - Swagger UI at `http://98.87.5.107/swagger`
 - Database seeding successful in logs
+- No more "Name or service not known" errors
 
 ## 🔧 Troubleshooting
 
 If issues persist:
-1. Run diagnostic script: `./scripts/diagnose-ec2-docker.sh`
-2. Run fix script: `./scripts/fix-ec2-postgresql-connection.sh`
-3. Check container logs: `docker-compose logs finbotaiagent` 
+1. Check container logs: `docker-compose logs finbotaiagent`
+2. Verify PostgreSQL is running: `sudo systemctl status postgresql`
+3. Test database connection: `psql -h localhost -U finbotuser -d finbotdb` 
