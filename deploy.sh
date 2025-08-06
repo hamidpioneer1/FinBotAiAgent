@@ -1,11 +1,9 @@
 #!/bin/bash
 
-# FinBot AI Agent Deployment Script
-# This script deploys the .NET 9 web API to EC2 Ubuntu instance
+# Deployment script for FinBot AI Agent
+set -e
 
-set -e  # Exit on any error
-
-echo "🚀 Starting FinBot AI Agent deployment..."
+echo "🚀 Starting deployment..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,41 +30,36 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Stop and remove existing containers
+# Stop existing container if running
 print_status "Stopping existing containers..."
-docker compose down --remove-orphans || true
+docker-compose down --remove-orphans || true
 
-# Remove old images to free up space
-print_status "Cleaning up old images..."
-docker image prune -f || true
-
-# Build the new image
+# Build new image
 print_status "Building Docker image..."
-docker compose build --no-cache
+docker-compose build --no-cache
 
-# Start the services
+# Start services
 print_status "Starting services..."
-docker compose up -d
+docker-compose up -d
 
-# Wait for the application to start
-print_status "Waiting for application to start..."
-sleep 10
+# Wait for health check
+print_status "Waiting for application to be ready..."
+sleep 30
 
-# Check if the application is running
+# Check if application is responding
 if curl -f http://localhost:8080/weatherforecast > /dev/null 2>&1; then
     print_status "✅ Application is running successfully!"
-    print_status "🌐 API is available at: http://localhost:8080"
-    print_status "📊 Health check endpoint: http://localhost:8080/weatherforecast"
-    print_status "📚 Swagger UI: http://localhost:8080/swagger"
+    print_status "🌐 Access your API at: http://localhost:8080"
+    print_status "📊 Swagger UI at: http://localhost:8080/swagger"
 else
     print_error "❌ Application failed to start properly"
     print_status "Checking container logs..."
-    docker compose logs finbotaiagent
+    docker-compose logs finbotaiagent
     exit 1
 fi
 
-# Show running containers
-print_status "Current running containers:"
-docker compose ps
+# Show container status
+print_status "Container status:"
+docker-compose ps
 
 print_status "🎉 Deployment completed successfully!" 

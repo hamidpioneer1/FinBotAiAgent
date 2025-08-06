@@ -1,7 +1,56 @@
+# .NET Core
 bin/
 obj/
-/packages/
-riderModule.iml
-/_ReSharper.Caches/
-/.idea/.idea.FinBotAiAgent/.idea/indexLayout.xml
-/.idea/.idea.FinBotAiAgent/.idea/vcs.xml
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# User-specific files
+*.rsuser
+*.userprefs
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio files
+.vs/
+*.ncrunch*
+*.DotSettings.user
+
+# User Secrets
+secrets.json
+github-secrets.txt
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

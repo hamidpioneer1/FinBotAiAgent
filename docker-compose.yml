@@ -13,6 +13,13 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
+      - ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections=100
+      - ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
+      # Database Configuration - Replace with your actual values
+      - DB_HOST=your-db-host
+      - DB_USERNAME=your-db-username
+      - DB_PASSWORD=your-db-password
+      - DB_NAME=finbotdb
     networks:
       - finbot-network
     healthcheck:
@@ -21,6 +28,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
 networks:
   finbot-network:

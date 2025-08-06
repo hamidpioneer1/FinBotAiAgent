@@ -1,0 +1,146 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --no-restore
+    
+    - name: Test
+      run: dotnet test --no-build --verbosity normal
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Build application
+      run: dotnet build --configuration Release --no-restore
+    
+    - name: Publish application
+      run: dotnet publish --configuration Release --output ./publish
+    
+    - name: Create deployment package
+      run: |
+        tar -czf finbotaiagent.tar.gz -C ./publish .
+    
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        script: |
+          # Create deployment directory
+          mkdir -p /home/ubuntu/finbotaiagent
+          cd /home/ubuntu/finbotaiagent
+          
+          # Stop existing containers
+          docker-compose down || true
+          
+          # Remove old image
+          docker rmi finbotaiagent:latest || true
+          
+          # Create environment file with secrets
+          cat > .env << 'EOF'
+          # Database Configuration
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_USERNAME=${{ secrets.DB_USERNAME }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          
+          # Application Configuration
+          ASPNETCORE_ENVIRONMENT=Production
+          ASPNETCORE_URLS=http://+:8080
+          
+          # Performance Settings
+          ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections=100
+          ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
+          EOF
+          
+          # Update docker-compose.yml to use .env file
+          cat > docker-compose.yml << 'EOF'
+          version: '3.8'
+          
+          services:
+            finbotaiagent:
+              image: finbotaiagent:latest
+              build:
+                context: .
+                dockerfile: Dockerfile
+              container_name: finbotaiagent
+              restart: unless-stopped
+              ports:
+                - "8080:8080"
+              env_file:
+                - .env
+              networks:
+                - finbot-network
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8080/weatherforecast"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 40s
+              logging:
+                driver: "json-file"
+                options:
+                  max-size: "10m"
+                  max-file: "3"
+              deploy:
+                resources:
+                  limits:
+                    memory: 512M
+                  reservations:
+                    memory: 256M
+          
+          networks:
+            finbot-network:
+              driver: bridge
+          EOF
+          
+          # Copy application files
+          cp -r * /home/ubuntu/finbotaiagent/
+          
+          # Build and start containers
+          docker-compose build
+          docker-compose up -d
+          
+          # Wait for health check
+          sleep 30
+          
+          # Verify deployment
+          if curl -f http://localhost:8080/weatherforecast; then
+            echo "Deployment successful!"
+          else
+            echo "Deployment failed!"
+            docker-compose logs
+            exit 1
+          fi 

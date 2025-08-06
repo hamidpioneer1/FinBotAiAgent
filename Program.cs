@@ -1,4 +1,5 @@
 using Npgsql;
+using FinBotAiAgent.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,7 +8,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
-string connectionString = builder.Configuration.GetConnectionString("PostgreSql");
+// Configure database settings
+var databaseSettings = new DatabaseSettings();
+builder.Configuration.GetSection(DatabaseSettings.SectionName).Bind(databaseSettings);
+
+// Validate database configuration
+if (!databaseSettings.IsValid)
+{
+    throw new InvalidOperationException("Database connection string is not configured. Please check your configuration.");
+}
+
+string connectionString = databaseSettings.PostgreSql;
 
 var app = builder.Build();
 
@@ -49,7 +60,8 @@ app.MapPost("/api/expenses", async (Expense expense) =>
     cmd.Parameters.AddWithValue("amount", expense.Amount);
     cmd.Parameters.AddWithValue("category", expense.Category);
     cmd.Parameters.AddWithValue("description", expense.Description ?? "");
-    var id = (int)await cmd.ExecuteScalarAsync();
+    var result = await cmd.ExecuteScalarAsync();
+    var id = result != null ? Convert.ToInt32(result) : 0;
     return Results.Created($"/api/expenses/{id}", new { Id = id });
 });
 

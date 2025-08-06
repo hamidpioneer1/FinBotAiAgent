@@ -1,12 +1,12 @@
 [Unit]
-Description=FinBot AI Agent
+Description=FinBot AI Agent Docker Compose Service
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/ubuntu/FinBotAiAgent
+WorkingDirectory=/home/ubuntu/finbotaiagent
 ExecStart=/usr/local/bin/docker-compose up -d
 ExecStop=/usr/local/bin/docker-compose down
 TimeoutStartSec=0
