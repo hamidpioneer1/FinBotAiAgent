@@ -81,10 +81,11 @@ jobs:
           # Remove old image
           docker rmi finbotaiagent:latest || true
           
-          # Create environment file with secrets
-          cat > .env << 'EOF'
-          # Database Configuration
-          DB_HOST=${{ secrets.DB_HOST }}
+          # Create environment file with EC2 internal IP for maximum reliability
+          EC2_INTERNAL_IP=$(hostname -I | awk '{print $1}')
+          cat > .env << EOF
+          # Database Configuration - Using EC2 Internal IP for reliability
+          DB_HOST=$EC2_INTERNAL_IP
           DB_USERNAME=${{ secrets.DB_USERNAME }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           DB_NAME=${{ secrets.DB_NAME }}
