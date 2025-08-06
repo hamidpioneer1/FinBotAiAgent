@@ -1,11 +1,16 @@
 using Npgsql;
 using FinBotAiAgent.Configuration;
+using FinBotAiAgent.Services;
+using Serilog;
+using Serilog.Events;
 
 // Seed database with initial data
-static async Task SeedDatabaseAsync(string connectionString)
+static async Task SeedDatabaseAsync(string connectionString, IStructuredLoggingService? structuredLogging = null)
 {
     try
     {
+        structuredLogging?.LogDatabaseConnectionAttempt(connectionString, true);
+        
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
         
@@ -42,16 +47,20 @@ static async Task SeedDatabaseAsync(string connectionString)
                 await cmd.ExecuteNonQueryAsync();
             }
             
+            structuredLogging?.LogHealthCheck("DatabaseSeeding", true, $"Seeded database with {seedExpenses.Length} initial expenses");
             Console.WriteLine($"✅ Seeded database with {seedExpenses.Length} initial expenses");
         }
         else
         {
+            structuredLogging?.LogHealthCheck("DatabaseSeeding", true, "Database already contains data, skipping seed");
             Console.WriteLine("ℹ️ Database already contains data, skipping seed");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"⚠️ Warning: Could not seed database: {ex.Message}");
+        structuredLogging?.LogDatabaseConnectionAttempt(connectionString, false, ex.Message);
+        structuredLogging?.LogSecurityEvent("DatabaseSeedingError", $"Could not seed database: {ex.Message}");
+        Console.WriteLine($"⚠️ Warning: Could not seed database: {ex.Message}", ex);
         // Don't throw - seeding failure shouldn't prevent app startup
     }
 }
@@ -63,19 +72,61 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
+// Configure Serilog for structured logging
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithThreadId()
+    .Enrich.WithProcessId()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.File("logs/finbotaiagent-.log", 
+        rollingInterval: RollingInterval.Day,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .CreateLogger();
+
+builder.Host.UseSerilog();
+
+// Add structured logging service
+builder.Services.AddScoped<IStructuredLoggingService, StructuredLoggingService>();
+
 // Configure database settings
 var databaseSettings = new DatabaseSettings();
 builder.Configuration.GetSection(DatabaseSettings.SectionName).Bind(databaseSettings);
 
+Console.WriteLine("connectionString section: ", builder.Configuration.GetSection(DatabaseSettings.SectionName));
+
+var app = builder.Build();
+
+// Get structured logging service
+var structuredLogging = app.Services.GetRequiredService<IStructuredLoggingService>();
+
+// Log deployment information
+structuredLogging.LogDeploymentInfo(
+    deploymentId: Environment.GetEnvironmentVariable("DEPLOYMENT_ID") ?? Guid.NewGuid().ToString(),
+    environment: app.Environment.EnvironmentName
+);
+
+// Log environment information
+structuredLogging.LogEnvironmentInfo(app.Environment);
+
+// Log Docker information
+structuredLogging.LogDockerInfo();
+
+// Log configuration debug information
+structuredLogging.LogConfigurationDebug(builder.Configuration, databaseSettings);
+
 // Validate database configuration
 if (!databaseSettings.IsValid)
 {
+    structuredLogging.LogSecurityEvent("ConfigurationError", "Database connection string is not configured properly");
     throw new InvalidOperationException("Database connection string is not configured. Please check your configuration.");
 }
 
-string connectionString = databaseSettings.PostgreSql;
+structuredLogging.LogHealthCheck("Configuration", true, "Database configuration validated successfully");
 
-var app = builder.Build();
+string connectionString = databaseSettings.PostgreSql;
 
 // Configure the HTTP request pipeline.
 // Enable Swagger UI for both Development and Production
@@ -280,7 +331,7 @@ app.MapDelete("/api/expenses/{id:int}", async (int id) =>
 });
 
 // Seed database with initial data
-await SeedDatabaseAsync(connectionString);
+await SeedDatabaseAsync(connectionString, structuredLogging);
 
 app.Run();
 

@@ -119,6 +119,12 @@ jobs:
           
           # Create environment file with EC2 internal IP for maximum reliability
           EC2_INTERNAL_IP=$(hostname -I | awk '{print $1}')
+          echo "🔧 CI/CD Debug: Creating .env file"
+          echo "EC2 Internal IP: $EC2_INTERNAL_IP"
+          echo "DB_USERNAME: ${{ secrets.DB_USERNAME }}"
+          echo "DB_NAME: ${{ secrets.DB_NAME }}"
+          echo "DB_PASSWORD: [HIDDEN]"
+          
           cat > .env << EOF
           # Database Configuration - Using EC2 Internal IP for reliability
           DB_HOST=$EC2_INTERNAL_IP
@@ -134,6 +140,10 @@ jobs:
           ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections=100
           ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
           EOF
+          
+          echo "✅ .env file created"
+          echo "📄 .env file contents:"
+          cat .env
           
           # Update docker-compose.yml with bridge networking
           cat > docker-compose.yml << 'EOF'
@@ -180,17 +190,25 @@ jobs:
           EOF
           
           # Build and start containers
+          echo "🔧 CI/CD Debug: Building and starting containers"
           docker-compose build
           docker-compose up -d
           
           # Wait for health check
+          echo "⏳ Waiting for application to start..."
           sleep 30
           
+          # Debug: Check container logs
+          echo "📋 Container logs:"
+          docker-compose logs finbotaiagent
+          
           # Verify deployment
+          echo "🔍 Verifying deployment..."
           if curl -f http://localhost:8080/weatherforecast; then
-            echo "Deployment successful!"
+            echo "✅ Deployment successful!"
           else
-            echo "Deployment failed!"
+            echo "❌ Deployment failed!"
+            echo "📋 Full container logs:"
             docker-compose logs
             exit 1
           fi 

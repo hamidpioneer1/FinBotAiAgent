@@ -18,8 +18,8 @@ RUN dotnet publish "FinBotAiAgent.csproj" -c Release -o /app/publish /p:UseAppHo
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 
-# Create non-root user for security
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+# Create logs directory and non-root user for security
+RUN mkdir -p /app/logs && adduser --disabled-password --gecos "" appuser && chown -R appuser /app
 USER appuser
 
 # Copy published app
