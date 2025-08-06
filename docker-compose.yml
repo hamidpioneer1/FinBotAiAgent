@@ -10,20 +10,12 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:8080
-      - ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections=100
-      - ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
-      # Database Configuration - Replace with your actual values
-      - DB_HOST=your-db-host
-      - DB_USERNAME=your-db-username
-      - DB_PASSWORD=your-db-password
-      - DB_NAME=finbotdb
+    env_file:
+      - .env
     networks:
       - finbot-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/weatherforecast"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/weatherforecast"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -39,7 +31,10 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   finbot-network:
     driver: bridge
+    # Auto-assigned subnet by Docker

@@ -98,7 +98,7 @@ jobs:
           ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
           EOF
           
-          # Update docker-compose.yml to use .env file
+          # Update docker-compose.yml with bridge networking
           cat > docker-compose.yml << 'EOF'
           version: '3.8'
           
@@ -117,7 +117,7 @@ jobs:
               networks:
                 - finbot-network
               healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8080/weatherforecast"]
+                test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/weatherforecast"]
                 interval: 30s
                 timeout: 10s
                 retries: 3
@@ -133,10 +133,13 @@ jobs:
                     memory: 512M
                   reservations:
                     memory: 256M
+              extra_hosts:
+                - "host.docker.internal:host-gateway"
           
           networks:
             finbot-network:
               driver: bridge
+              # Auto-assigned subnet by Docker
           EOF
           
           # Build and start containers
