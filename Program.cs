@@ -1,15 +1,15 @@
 using Npgsql;
 using FinBotAiAgent.Configuration;
-using FinBotAiAgent.Services;
 using Serilog;
 using Serilog.Events;
+using Microsoft.Extensions.Logging;
 
 // Seed database with initial data
-static async Task SeedDatabaseAsync(string connectionString, IStructuredLoggingService? structuredLogging = null)
+static async Task SeedDatabaseAsync(string connectionString, Microsoft.Extensions.Logging.ILogger? logger = null)
 {
     try
     {
-        structuredLogging?.LogDatabaseConnectionAttempt(connectionString, true);
+        logger?.LogInformation("Attempting to seed database with initial data");
         
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
@@ -47,30 +47,24 @@ static async Task SeedDatabaseAsync(string connectionString, IStructuredLoggingS
                 await cmd.ExecuteNonQueryAsync();
             }
             
-            structuredLogging?.LogHealthCheck("DatabaseSeeding", true, $"Seeded database with {seedExpenses.Length} initial expenses");
+            logger?.LogInformation("Successfully seeded database with {Count} initial expenses", seedExpenses.Length);
             Console.WriteLine($"✅ Seeded database with {seedExpenses.Length} initial expenses");
         }
         else
         {
-            structuredLogging?.LogHealthCheck("DatabaseSeeding", true, "Database already contains data, skipping seed");
+            logger?.LogInformation("Database already contains data, skipping seed");
             Console.WriteLine("ℹ️ Database already contains data, skipping seed");
         }
     }
     catch (Exception ex)
     {
-        structuredLogging?.LogDatabaseConnectionAttempt(connectionString, false, ex.Message);
-        structuredLogging?.LogSecurityEvent("DatabaseSeedingError", $"Could not seed database: {ex.Message}");
+        logger?.LogError(ex, "Failed to seed database: {ErrorMessage}", ex.Message);
         Console.WriteLine($"⚠️ Warning: Could not seed database: {ex.Message}", ex);
         // Don't throw - seeding failure shouldn't prevent app startup
     }
 }
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
-builder.Services.AddSwaggerGen();
 
 // Configure Serilog for structured logging
 Log.Logger = new LoggerConfiguration()
@@ -88,8 +82,10 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// Add structured logging service
-builder.Services.AddScoped<IStructuredLoggingService, StructuredLoggingService>();
+// Add services to the container.
+// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddOpenApi();
+builder.Services.AddSwaggerGen();
 
 // Configure database settings
 var databaseSettings = new DatabaseSettings();
@@ -99,34 +95,85 @@ Console.WriteLine("connectionString section: ", builder.Configuration.GetSection
 
 var app = builder.Build();
 
-// Get structured logging service
-var structuredLogging = app.Services.GetRequiredService<IStructuredLoggingService>();
+// Get logger for this component
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
 // Log deployment information
-structuredLogging.LogDeploymentInfo(
-    deploymentId: Environment.GetEnvironmentVariable("DEPLOYMENT_ID") ?? Guid.NewGuid().ToString(),
-    environment: app.Environment.EnvironmentName
-);
+logger.LogInformation("Application starting with deployment ID {DeploymentId} in environment {Environment}", 
+    Environment.GetEnvironmentVariable("DEPLOYMENT_ID") ?? Guid.NewGuid().ToString(),
+    app.Environment.EnvironmentName);
 
 // Log environment information
-structuredLogging.LogEnvironmentInfo(app.Environment);
+logger.LogInformation("Environment Information: {EnvironmentName}, ContentRoot: {ContentRoot}, ApplicationName: {ApplicationName}", 
+    app.Environment.EnvironmentName,
+    app.Environment.ContentRootPath,
+    app.Environment.ApplicationName);
 
 // Log Docker information
-structuredLogging.LogDockerInfo();
+logger.LogInformation("Docker Environment: ContainerId={ContainerId}, Platform={Platform}, ProcessorCount={ProcessorCount}", 
+    Environment.GetEnvironmentVariable("HOSTNAME"),
+    Environment.OSVersion.ToString(),
+    Environment.ProcessorCount);
 
-// Log configuration debug information
-structuredLogging.LogConfigurationDebug(builder.Configuration, databaseSettings);
+// Build connection string from environment variables (for Docker/EC2) or config file (for local dev)
+string connectionString;
+bool useEnvironmentVariables = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_HOST"));
 
-// Validate database configuration
-if (!databaseSettings.IsValid)
+if (useEnvironmentVariables)
 {
-    structuredLogging.LogSecurityEvent("ConfigurationError", "Database connection string is not configured properly");
-    throw new InvalidOperationException("Database connection string is not configured. Please check your configuration.");
+    // Use environment variables (Docker/EC2 scenario)
+    string host = Environment.GetEnvironmentVariable("DB_HOST") ?? "";
+    string user = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "";
+    string pass = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "";
+    string db   = Environment.GetEnvironmentVariable("DB_NAME") ?? "";
+
+    connectionString = $"Host={host};Username={user};Password={pass};Database={db}";
+    
+    logger.LogInformation("Using environment variables for database connection. Host: {Host}, User: {User}, Database: {Database}", 
+        host, user, db);
+    
+    if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass) || string.IsNullOrWhiteSpace(db))
+    {
+        logger.LogError("One or more required DB environment variables are missing");
+        throw new InvalidOperationException("Database connection string is not configured. Please check your environment variables.");
+    }
+    
+    logger.LogInformation("Database connection string built from environment variables successfully");
+}
+else
+{
+    // Use configuration file (local development scenario)
+    var localDatabaseSettings = new DatabaseSettings();
+    builder.Configuration.GetSection(DatabaseSettings.SectionName).Bind(localDatabaseSettings);
+    
+    connectionString = localDatabaseSettings.PostgreSql;
+    
+    logger.LogInformation("Using configuration file for database connection. Connection string length: {Length}", 
+        connectionString?.Length ?? 0);
+    
+    if (!localDatabaseSettings.IsValid)
+    {
+        logger.LogError("Database connection string is not configured in config file");
+        throw new InvalidOperationException("Database connection string is not configured. Please check your configuration file.");
+    }
+    
+    logger.LogInformation("Database connection string loaded from configuration file successfully");
 }
 
-structuredLogging.LogHealthCheck("Configuration", true, "Database configuration validated successfully");
+// Log configuration debug information
+logger.LogInformation("Configuration Sources: {Sources}", 
+    string.Join(", ", (builder.Configuration as IConfigurationRoot)?.Providers.Select(p => p.GetType().Name) ?? Array.Empty<string>()));
 
-string connectionString = databaseSettings.PostgreSql;
+// Log environment variables (without sensitive data)
+var envVars = new[] { "DB_HOST", "DB_USERNAME", "DB_NAME", "ASPNETCORE_ENVIRONMENT" };
+foreach (var envVar in envVars)
+{
+    var value = Environment.GetEnvironmentVariable(envVar);
+    logger.LogInformation("Environment Variable {Variable}: {Value}", envVar, value ?? "NOT SET");
+}
+
+// Validate database configuration
+logger.LogInformation("Database configuration validated successfully");
 
 // Configure the HTTP request pipeline.
 // Enable Swagger UI for both Development and Production
@@ -331,7 +378,7 @@ app.MapDelete("/api/expenses/{id:int}", async (int id) =>
 });
 
 // Seed database with initial data
-await SeedDatabaseAsync(connectionString, structuredLogging);
+await SeedDatabaseAsync(connectionString, logger);
 
 app.Run();
 
