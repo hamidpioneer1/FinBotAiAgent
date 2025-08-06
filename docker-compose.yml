@@ -1,0 +1,6 @@
+﻿services:
+  finbotaiagent:
+    image: finbotaiagent
+    build:
+      context: .
+      dockerfile: Dockerfile
