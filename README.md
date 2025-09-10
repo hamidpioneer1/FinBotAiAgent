@@ -1,274 +1,259 @@
-# FinBot AI Agent - .NET 9 Web API
+# 🤖 FinBotAiAgent
 
-A minimal .NET 9 web API for financial bot operations with PostgreSQL integration.
-
-## 🔐 Security Configuration
-
-**Important**: This application uses secure configuration management. See [SECURITY_SETUP.md](SECURITY_SETUP.md) for detailed instructions on:
-
-- Setting up User Secrets for local development
-- Configuring environment variables for production
-- Security best practices
-- Troubleshooting guide
-
-**For Production Deployment**: See [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md) for setting up GitHub Secrets for secure CI/CD deployment to AWS EC2.
-
-### Quick Security Setup
-
-**For Local Development:**
-```bash
-# Initialize User Secrets
-dotnet user-secrets init
-
-# Add your database connection string
-dotnet user-secrets set "ConnectionStrings:PostgreSql" "Host=localhost;Username=postgres;Password=your_password;Database=finbotdb"
-```
-
-**For Production:**
-Update the environment variables in `docker-compose.yml` with your actual database credentials.
+A modern .NET 9.0 Web API for financial bot AI agent services with enterprise-grade security and OAuth 2.0 integration.
 
 ## 🚀 Quick Start
 
-### Local Development
+### **1. Clone and Build**
 ```bash
-# Clone the repository
 git clone <your-repo-url>
 cd FinBotAiAgent
-
-# Set up User Secrets (see SECURITY_SETUP.md)
-dotnet user-secrets init
-dotnet user-secrets set "ConnectionStrings:PostgreSql" "your-connection-string"
-
-# Run locally
-dotnet run
-
-# Or with Docker
-docker-compose up
+dotnet build
 ```
 
-### Production Deployment
-
-#### Prerequisites
-- Ubuntu 20.04+ EC2 instance
-- Docker and Docker Compose installed
-- Nginx for reverse proxy
-- Domain name (optional)
-- GitHub repository with GitHub Secrets configured
-
-#### Step-by-Step Deployment
-
-**Option 1: Automated Deployment (Recommended)**
-1. **Set up GitHub Secrets** - Follow [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md)
-2. **Push to main branch** - Deployment happens automatically via GitHub Actions
-3. **Monitor deployment** - Check Actions tab in GitHub repository
-
-**Option 2: Manual Deployment**
-1. **EC2 Instance Setup**
+### **2. Run Locally**
 ```bash
-# Connect to your EC2 instance
-ssh -i your-key.pem ubuntu@your-ec2-ip
-
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Install Nginx
-sudo apt install -y nginx
+dotnet run --environment Development
 ```
 
-2. **Deploy Application**
+### **3. Test the API**
 ```bash
-# Clone repository
-git clone <your-repo-url> /home/ubuntu/finbotaiagent
-cd /home/ubuntu/finbotaiagent
+# Health check
+curl http://localhost:8080/health
 
-# Make deployment script executable
-chmod +x deploy.sh
+# API key authentication
+curl -H "X-API-Key: dev-api-key-12345" http://localhost:8080/api/expenses
 
-# Run deployment
-./deploy.sh
+# OAuth token generation
+curl -X POST http://localhost:8080/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{"grant_type":"client_credentials","client_id":"copilot-studio-client","client_secret":"copilot-studio-secret-12345","scope":"api.read api.write"}'
 ```
 
-3. **Configure Nginx**
-```bash
-# Copy nginx configuration
-sudo cp nginx.conf /etc/nginx/sites-available/finbotaiagent
-sudo ln -s /etc/nginx/sites-available/finbotaiagent /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
+## ✨ Features
 
-# Test and reload nginx
-sudo nginx -t
-sudo systemctl reload nginx
-```
+### **🔐 Authentication & Security**
+- **OAuth 2.0 Client Credentials** - Enterprise-grade JWT authentication
+- **API Key Authentication** - Simple X-API-Key header authentication
+- **Hybrid Authentication** - Both methods supported simultaneously
+- **External Key Management** - Decoupled key rotation without deployment
+- **Rate Limiting** - Protection against abuse
+- **CORS Configuration** - Cross-origin request security
+- **HTTPS Enforcement** - Encrypted communication in production
 
-4. **Setup SSL (Optional)**
-```bash
-# Install Certbot
-sudo apt install -y certbot python3-certbot-nginx
+### **🏗️ Architecture**
+- **RESTful API** with comprehensive endpoints
+- **PostgreSQL** database integration
+- **Docker** support with multi-stage builds
+- **Swagger/OpenAPI** documentation
+- **Serilog** structured logging
+- **Health checks** for monitoring
+- **Request tracking** with unique IDs
 
-# Get SSL certificate
-sudo certbot --nginx -d your-domain.com
-```
+### **🔗 Integration Ready**
+- **Copilot Studio** OAuth integration
+- **Standard OAuth 2.0** flow compliance
+- **Comprehensive API** documentation
+- **Test scripts** for verification
+- **Multiple authentication** methods
+
+## 📚 Documentation
+
+### **📖 Complete Documentation**
+- **[Main Documentation](docs/README.md)** - Comprehensive guide
+- **[Deployment Guide](docs/deployment/README.md)** - Production deployment
+- **[Security Guide](docs/security/README.md)** - Authentication and security
+- **[Integration Guide](docs/integration/README.md)** - Copilot Studio and OAuth
+- **[API Reference](docs/api/README.md)** - Complete API documentation
+
+### **🚀 Quick Links**
+- [Getting Started](docs/README.md#getting-started)
+- [Deployment](docs/deployment/README.md)
+- [Security Setup](docs/security/README.md)
+- [Copilot Studio Integration](docs/integration/COPILOT_STUDIO_INTEGRATION_GUIDE.md)
+- [OAuth Implementation](docs/integration/OAUTH_IMPLEMENTATION.md)
 
 ## 🔧 Configuration
 
-### Environment Variables
-- `ASPNETCORE_ENVIRONMENT`: Set to `Production`
-- `ASPNETCORE_URLS`: Set to `http://+:8080`
-- Database connection string in `appsettings.Production.json`
-
-### Security Best Practices
-- ✅ Non-root Docker user
-- ✅ Security headers in Nginx
-- ✅ Resource limits in Docker
-- ✅ Health checks
-- ✅ Logging configuration
-
-## 📊 Monitoring
-
-### Health Check
+### **Environment Variables**
 ```bash
-# Check application health
-curl http://your-domain.com/health
+# Authentication
+API_KEY=your-secure-api-key-here
+JWT_SECRET_KEY=your-jwt-secret-key-here
 
-# Check container status
-docker-compose ps
-
-# View logs
-docker-compose logs -f finbotaiagent
+# Database
+DB_HOST=your-database-host
+DB_USERNAME=your-database-username
+DB_PASSWORD=your-database-password
+DB_NAME=your-database-name
 ```
 
-### Performance Monitoring
+### **Configuration Files**
+- `appsettings.json` - Base configuration
+- `appsettings.Development.json` - Development settings
+- `appsettings.Production.json` - Production settings
+
+## 🐳 Docker Deployment
+
+### **Quick Docker Setup**
 ```bash
-# Monitor resource usage
-docker stats
+# Build and run
+docker build -t finbotaiagent .
+docker run -p 8080:8080 finbotaiagent
 
-# Check disk usage
-df -h
-
-# Monitor memory
-free -h
-```
-
-## 🔄 CI/CD Pipeline
-
-### GitHub Actions Setup
-
-1. **Repository Secrets**
-Add these secrets to your GitHub repository:
-- `EC2_HOST`: Your EC2 public IP
-- `EC2_USERNAME`: ubuntu
-- `EC2_SSH_KEY`: Your private SSH key
-
-2. **Automatic Deployment**
-- Push to `main` branch triggers deployment
-- Pull requests run tests only
-- Deployment includes health checks
-
-### Manual Deployment
-```bash
-# SSH to EC2
-ssh -i your-key.pem ubuntu@your-ec2-ip
-
-# Navigate to project
-cd /home/ubuntu/finbotaiagent
-
-# Pull latest changes
-git pull origin main
-
-# Deploy
-./deploy.sh
-```
-
-## 🐳 Docker Commands
-
-```bash
-# Build image
-docker-compose build
-
-# Start services
+# Or use Docker Compose
 docker-compose up -d
-
-# Stop services
-docker-compose down
-
-# View logs
-docker-compose logs -f
-
-# Update and restart
-docker-compose pull && docker-compose up -d
 ```
 
-## 📝 API Endpoints
+### **Production Deployment**
+```bash
+# Deploy via GitHub Actions
+git push origin main
+```
 
-- `GET /weatherforecast` - Sample weather data
-- `POST /api/expenses` - Create expense
-- `GET /api/expenses/{id}` - Get expense by ID
-- `GET /api/policies` - Get expense policies
+## 🔐 Authentication Methods
+
+### **OAuth 2.0 Client Credentials (Recommended)**
+```bash
+# Get token
+curl -X POST https://your-domain.com/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "copilot-studio-client",
+    "client_secret": "copilot-studio-secret-12345",
+    "scope": "api.read api.write"
+  }'
+
+# Use token
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  https://your-domain.com/api/expenses
+```
+
+### **API Key Authentication (Simple)**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  https://your-domain.com/api/expenses
+```
+
+## 📊 API Endpoints
+
+### **Public Endpoints**
+- `GET /health` - Health check
 - `GET /swagger` - API documentation
+- `POST /oauth/token` - OAuth token generation
 
-## 🔍 Troubleshooting
+### **Protected Endpoints**
+- `GET /api/expenses` - Get all expenses
+- `POST /api/expenses` - Create new expense
+- `GET /api/policies` - Get policies
 
-### Common Issues
+## 🔗 Integration Examples
 
-1. **Application not starting**
-```bash
-# Check logs
-docker-compose logs finbotaiagent
-
-# Check if port is in use
-sudo netstat -tlnp | grep 8080
+### **Copilot Studio Custom Connector**
+```json
+{
+  "authentication": {
+    "type": "oauth2_client_credentials",
+    "tokenUrl": "https://your-domain.com/oauth/token",
+    "clientId": "copilot-studio-client",
+    "clientSecret": "copilot-studio-secret-12345",
+    "scope": "api.read api.write"
+  }
+}
 ```
 
-2. **Database connection issues**
-```bash
-# Test database connection
-docker exec -it finbotaiagent curl -f http://localhost:8080/weatherforecast
+### **PowerShell Integration**
+```powershell
+# OAuth 2.0
+$tokenResponse = Invoke-RestMethod -Uri "https://your-domain.com/oauth/token" -Method POST -Body @{
+    grant_type = "client_credentials"
+    client_id = "your-client-id"
+    client_secret = "your-client-secret"
+    scope = "api.read api.write"
+} -ContentType "application/json"
+
+$headers = @{ "Authorization" = "Bearer $($tokenResponse.access_token)" }
+$expenses = Invoke-RestMethod -Uri "https://your-domain.com/api/expenses" -Headers $headers
 ```
 
-3. **Nginx issues**
+## 🛠️ Development
+
+### **Prerequisites**
+- .NET 9.0 SDK
+- PostgreSQL
+- Docker (optional)
+
+### **Running Tests**
 ```bash
-# Check nginx status
-sudo systemctl status nginx
+# Test security implementation
+./docs/scripts/test-security.ps1
 
-# Check nginx configuration
-sudo nginx -t
+# Test OAuth functionality
+./docs/scripts/test-oauth.ps1
 
-# View nginx logs
-sudo tail -f /var/log/nginx/error.log
+# Test deployment readiness
+./docs/scripts/test-deployment.ps1
 ```
 
-## 📈 Performance Optimization
+### **Building for Production**
+```bash
+dotnet build --configuration Release
+```
 
-- Connection pooling enabled
-- Gzip compression
-- Resource limits configured
-- Health checks implemented
-- Log rotation enabled
+## 📈 Monitoring
 
-## 🔒 Security Checklist
+### **Health Checks**
+- **Endpoint**: `/health`
+- **Response**: JSON with status, timestamp, version
+- **Monitoring**: Ready for external monitoring systems
 
-- [ ] Non-root Docker user
-- [ ] Security headers configured
-- [ ] Resource limits set
-- [ ] Health checks enabled
-- [ ] Logging configured
-- [ ] SSL certificate (if using domain)
-- [ ] Firewall rules configured
-- [ ] Regular security updates
+### **Logging**
+- **Structured logging** with Serilog
+- **Request tracking** with unique IDs
+- **Security events** logged for audit
+- **Performance metrics** included
 
-## 📞 Support
+## 🚨 Security Features
 
-For issues or questions:
-1. Check the troubleshooting section
-2. Review container logs
-3. Check GitHub Issues
-4. Contact the development team 
+### **Authentication Security**
+- **JWT tokens** with HMAC SHA-256 signing
+- **API key validation** with external key management
+- **Scope-based** access control
+- **Token expiration** and validation
+
+### **Infrastructure Security**
+- **Non-root user** in Docker containers
+- **HTTPS enforcement** in production
+- **Rate limiting** protection
+- **CORS** security headers
+
+## 🎯 Production Ready
+
+### **✅ Deployment Checklist**
+- [x] Application builds successfully
+- [x] Docker image optimized
+- [x] Security measures implemented
+- [x] OAuth 2.0 authentication working
+- [x] API key fallback configured
+- [x] External key management ready
+- [x] GitHub Actions deployment pipeline
+- [x] Comprehensive documentation
+- [x] Test scripts provided
+- [x] Monitoring and logging configured
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+---
+
+**For complete documentation, see [docs/README.md](docs/README.md)**

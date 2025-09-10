@@ -124,6 +124,7 @@ jobs:
           echo "DB_USERNAME: ${{ secrets.DB_USERNAME }}"
           echo "DB_NAME: ${{ secrets.DB_NAME }}"
           echo "DB_PASSWORD: [HIDDEN]"
+          echo "API_KEY: [HIDDEN]"
           
           cat > .env << EOF
           # Database Configuration - Using EC2 Internal IP for reliability
@@ -131,6 +132,9 @@ jobs:
           DB_USERNAME=${{ secrets.DB_USERNAME }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           DB_NAME=${{ secrets.DB_NAME }}
+          
+          # Security Configuration (Fallback for external key management)
+          API_KEY=${{ secrets.API_KEY }}
           
           # Application Configuration
           ASPNETCORE_ENVIRONMENT=Production
@@ -164,7 +168,7 @@ jobs:
               networks:
                 - finbot-network
               healthcheck:
-                test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/weatherforecast"]
+                test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
                 interval: 30s
                 timeout: 10s
                 retries: 3
@@ -194,6 +198,13 @@ jobs:
           docker-compose build
           docker-compose up -d
           
+          # Set up external key management
+          echo "🔐 Setting up external key management..."
+          docker exec finbotaiagent mkdir -p /app/secrets
+          echo "${{ secrets.API_KEY }}" | docker exec -i finbotaiagent tee /app/secrets/api-key.txt > /dev/null
+          docker exec finbotaiagent chmod 600 /app/secrets/api-key.txt
+          echo "✅ External key management configured"
+          
           # Wait for health check
           echo "⏳ Waiting for application to start..."
           sleep 30
@@ -204,8 +215,14 @@ jobs:
           
           # Verify deployment
           echo "🔍 Verifying deployment..."
-          if curl -f http://localhost:8080/weatherforecast; then
+          if curl -f http://localhost:8080/health; then
             echo "✅ Deployment successful!"
+            echo "🔒 Testing API authentication..."
+            if curl -f -H "X-API-Key: ${{ secrets.API_KEY }}" http://localhost:8080/api/expenses; then
+              echo "✅ API authentication working!"
+            else
+              echo "⚠️ API authentication test failed - check API key configuration"
+            fi
           else
             echo "❌ Deployment failed!"
             echo "📋 Full container logs:"

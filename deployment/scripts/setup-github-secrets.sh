@@ -136,6 +136,8 @@ main() {
     print_secret_info "DB_USERNAME" "$DB_USERNAME"
     print_secret_info "DB_PASSWORD" "$DB_PASSWORD"
     print_secret_info "DB_NAME" "$DB_NAME"
+    print_secret_info "API_KEY" "$API_KEY"
+    print_secret_info "JWT_SECRET_KEY" "$JWT_SECRET_KEY"
     
     echo ""
     print_info "=== Next Steps ==="
@@ -164,6 +166,8 @@ DB_HOST=$DB_HOST
 DB_USERNAME=$DB_USERNAME
 DB_PASSWORD=$DB_PASSWORD
 DB_NAME=$DB_NAME
+API_KEY=$API_KEY
+JWT_SECRET_KEY=$JWT_SECRET_KEY
 EOF
         print_info "Secrets saved to $secrets_file"
         print_warning "Keep this file secure and delete it after setting up GitHub Secrets!"

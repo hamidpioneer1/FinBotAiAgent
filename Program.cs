@@ -1,8 +1,12 @@
 using Npgsql;
 using FinBotAiAgent.Configuration;
+using FinBotAiAgent.Middleware;
+using FinBotAiAgent.Services;
 using Serilog;
 using Serilog.Events;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 // Seed database with initial data
 static async Task SeedDatabaseAsync(string connectionString, Microsoft.Extensions.Logging.ILogger? logger = null)
@@ -85,7 +89,129 @@ builder.Host.UseSerilog();
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "FinBotAiAgent API", Version = "v1" });
+    c.AddSecurityDefinition("ApiKey", new()
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Name = "X-API-Key",
+        Description = "API Key required to access the endpoints"
+    });
+    c.AddSecurityRequirement(new()
+    {
+        {
+            new()
+            {
+                Reference = new()
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "ApiKey"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// Configure security settings
+var securitySettings = new SecuritySettings();
+builder.Configuration.GetSection(SecuritySettings.SectionName).Bind(securitySettings);
+builder.Services.Configure<SecuritySettings>(builder.Configuration.GetSection(SecuritySettings.SectionName));
+
+// Configure external key management
+var externalKeyConfig = new ExternalKeyManagement();
+builder.Configuration.GetSection(ExternalKeyManagement.SectionName).Bind(externalKeyConfig);
+builder.Services.Configure<ExternalKeyManagement>(builder.Configuration.GetSection(ExternalKeyManagement.SectionName));
+
+// Register API key providers
+if (externalKeyConfig.Enabled)
+{
+    switch (externalKeyConfig.KeySource.ToLowerInvariant())
+    {
+        case "file":
+            builder.Services.AddSingleton<IApiKeyProvider, FileApiKeyProvider>();
+            break;
+        case "environment":
+        default:
+            builder.Services.AddSingleton<IApiKeyProvider, EnvironmentApiKeyProvider>();
+            break;
+    }
+    
+    // Add caching layer
+    builder.Services.AddSingleton<IApiKeyProvider>(provider =>
+    {
+        var innerProvider = provider.GetRequiredService<IApiKeyProvider>();
+        var logger = provider.GetRequiredService<ILogger<CachedApiKeyProvider>>();
+        return new CachedApiKeyProvider(innerProvider, logger, externalKeyConfig.CacheExpirationMinutes);
+    });
+}
+else
+{
+    // Fallback to configuration-based provider
+    builder.Services.AddSingleton<IApiKeyProvider, EnvironmentApiKeyProvider>();
+}
+
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("CopilotStudioPolicy", policy =>
+    {
+        policy.WithOrigins(securitySettings.AllowedOrigins)
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
+// Add rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("ApiPolicy", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = securitySettings.RateLimitRequestsPerMinute;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = securitySettings.RateLimitBurstSize;
+    });
+    
+    options.AddPolicy("ApiKeyPolicy", context =>
+    {
+        // Apply stricter rate limiting for API key requests
+        return RateLimitPartition.GetFixedWindowLimiter(
+            context.User?.Identity?.Name ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 50,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 5
+            });
+    });
+});
+
+// Configure OAuth settings
+var oauthSettings = new OAuthSettings();
+builder.Configuration.GetSection(OAuthSettings.SectionName).Bind(oauthSettings);
+builder.Services.Configure<OAuthSettings>(builder.Configuration.GetSection(OAuthSettings.SectionName));
+
+// Register OAuth services
+builder.Services.AddSingleton<IClientCredentialsService, ClientCredentialsService>();
+
+// Add authentication with hybrid support (JWT + API Key)
+if (oauthSettings.Enabled)
+{
+    builder.Services.AddAuthentication("Hybrid")
+        .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, HybridAuthenticationHandler>("Hybrid", options => { });
+}
+else
+{
+    builder.Services.AddAuthentication("ApiKey")
+        .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", options => { });
+}
+
+builder.Services.AddAuthorization();
 
 // Configure database settings
 var databaseSettings = new DatabaseSettings();
@@ -176,17 +302,48 @@ foreach (var envVar in envVars)
 logger.LogInformation("Database configuration validated successfully");
 
 // Configure the HTTP request pipeline.
+// Add security middleware
+app.UseMiddleware<RequestLoggingMiddleware>();
+
+// Add CORS
+app.UseCors("CopilotStudioPolicy");
+
+// Add rate limiting
+app.UseRateLimiter();
+
+// Add authentication and authorization
+app.UseAuthentication();
+app.UseAuthorization();
+
+// HTTPS redirection (only in production)
+if (securitySettings.RequireHttps)
+{
+    app.UseHttpsRedirection();
+}
+
 // Enable Swagger UI for both Development and Production
 app.MapOpenApi();
 app.UseSwagger();
-app.UseSwaggerUI();
-
-app.UseHttpsRedirection();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "FinBotAiAgent API v1");
+    c.RoutePrefix = "swagger";
+    c.DocumentTitle = "FinBotAiAgent API Documentation";
+});
 
 var summaries = new[]
 {
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
+
+// Health check endpoint (public, no auth required)
+app.MapGet("/health", () => new { 
+    Status = "Healthy", 
+    Timestamp = DateTime.UtcNow,
+    Version = "1.0.0",
+    Environment = app.Environment.EnvironmentName
+})
+.WithName("HealthCheck");
 
 app.MapGet("/weatherforecast", () =>
     {
@@ -202,6 +359,29 @@ app.MapGet("/weatherforecast", () =>
     })
     .WithName("GetWeatherForecast");
 
+// OAuth 2.0 Client Credentials Token Endpoint
+app.MapPost("/oauth/token", async (TokenRequest request, IClientCredentialsService clientCredentialsService) =>
+{
+    try
+    {
+        var tokenResponse = await clientCredentialsService.GenerateTokenAsync(request);
+        if (tokenResponse == null)
+        {
+            return Results.BadRequest(new { error = "invalid_client", error_description = "Invalid client credentials" });
+        }
+
+        return Results.Ok(tokenResponse);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error generating OAuth token");
+        return Results.BadRequest(new { error = "server_error", error_description = "Internal server error" });
+    }
+})
+.WithName("GetOAuthToken")
+.Produces<TokenResponse>(200)
+.Produces(400);
+
 app.MapPost("/api/expenses", async (Expense expense) =>
 {
     await using var conn = new NpgsqlConnection(connectionString);
@@ -214,7 +394,9 @@ app.MapPost("/api/expenses", async (Expense expense) =>
     var result = await cmd.ExecuteScalarAsync();
     var id = result != null ? Convert.ToInt32(result) : 0;
     return Results.Created($"/api/expenses/{id}", new { Id = id });
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 app.MapGet("/api/expenses", async () =>
 {
@@ -239,7 +421,9 @@ app.MapGet("/api/expenses", async () =>
         expenses.Add(expense);
     }
     return Results.Ok(expenses);
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 app.MapGet("/api/expenses/{id:int}", async (int id) =>
 {
@@ -262,7 +446,9 @@ app.MapGet("/api/expenses/{id:int}", async (int id) =>
         SubmittedAt = reader.GetDateTime(6)
     };
     return Results.Ok(expense);
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 app.MapGet("/api/policies", () =>
 {
@@ -274,7 +460,9 @@ app.MapGet("/api/policies", () =>
         new Policy("Office Supplies", 300)
     };
     return Results.Ok(policies);
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Add expense with custom status
 app.MapPost("/api/expenses/with-status", async (ExpenseWithStatus expense) =>
@@ -290,7 +478,9 @@ app.MapPost("/api/expenses/with-status", async (ExpenseWithStatus expense) =>
     var result = await cmd.ExecuteScalarAsync();
     var id = result != null ? Convert.ToInt32(result) : 0;
     return Results.Created($"/api/expenses/{id}", new { Id = id });
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Update expense status
 app.MapPut("/api/expenses/{id:int}/status", async (int id, string status) =>
@@ -306,7 +496,9 @@ app.MapPut("/api/expenses/{id:int}/status", async (int id, string status) =>
         return Results.NotFound(new { Message = "Expense not found" });
     
     return Results.Ok(new { Message = "Status updated successfully" });
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Get expenses by employee
 app.MapGet("/api/expenses/employee/{employeeId}", async (string employeeId) =>
@@ -333,7 +525,9 @@ app.MapGet("/api/expenses/employee/{employeeId}", async (string employeeId) =>
         expenses.Add(expense);
     }
     return Results.Ok(expenses);
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Get expenses by category
 app.MapGet("/api/expenses/category/{category}", async (string category) =>
@@ -360,7 +554,9 @@ app.MapGet("/api/expenses/category/{category}", async (string category) =>
         expenses.Add(expense);
     }
     return Results.Ok(expenses);
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Delete expense
 app.MapDelete("/api/expenses/{id:int}", async (int id) =>
@@ -375,10 +571,15 @@ app.MapDelete("/api/expenses/{id:int}", async (int id) =>
         return Results.NotFound(new { Message = "Expense not found" });
     
     return Results.Ok(new { Message = "Expense deleted successfully" });
-});
+})
+.RequireAuthorization()
+.RequireRateLimiting("ApiKeyPolicy");
 
 // Seed database with initial data
-await SeedDatabaseAsync(connectionString, logger);
+if (!string.IsNullOrEmpty(connectionString))
+{
+    await SeedDatabaseAsync(connectionString, logger);
+}
 
 app.Run();
 

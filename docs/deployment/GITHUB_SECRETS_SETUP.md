@@ -13,6 +13,12 @@ Set these secrets in your GitHub repository: **Settings → Secrets and variable
 
 **Note:** `DB_HOST` is automatically set to EC2 internal IP. PostgreSQL will be automatically configured for Docker access.
 
+### **Security Configuration**
+| Secret Name | Value | Description |
+|-------------|-------|-------------|
+| `API_KEY` | `your-secure-api-key-here` | **NEW** - API key for authentication |
+| `JWT_SECRET_KEY` | `your-jwt-secret-key-here` | **NEW** - JWT signing key for OAuth |
+
 ### **EC2 Configuration**
 | Secret Name | Value | Description |
 |-------------|-------|-------------|
