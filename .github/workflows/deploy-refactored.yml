@@ -1,0 +1,256 @@
+name: Deploy FinBot AI Agent to AWS EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  CONTAINER_NAME: 'finbotaiagent'
+  IMAGE_NAME: 'finbotaiagent:latest'
+
+jobs:
+  # Test Job
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+    
+    - name: Test
+      run: dotnet test --no-build --verbosity normal --configuration Release
+
+  # Database Setup Job
+  setup-database:
+    name: Setup Database
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup database on EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        script: |
+          # Set environment variables for database setup
+          export DB_USERNAME="${{ secrets.DB_USERNAME }}"
+          export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          export DB_NAME="${{ secrets.DB_NAME }}"
+          
+          # Make database setup script executable
+          chmod +x /home/ubuntu/finbotaiagent/deployment/configs/database-setup.sh
+          
+          # Run database setup
+          /home/ubuntu/finbotaiagent/deployment/configs/database-setup.sh setup
+
+  # Application Deployment Job
+  deploy:
+    name: Deploy Application
+    needs: [test, setup-database]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build application
+      run: dotnet build --configuration Release --no-restore
+    
+    - name: Publish application
+      run: dotnet publish --configuration Release --output ./publish
+    
+    - name: Create deployment package
+      run: |
+        tar -czf finbotaiagent.tar.gz -C ./publish .
+    
+    - name: Copy files to EC2
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        source: "."
+        target: "/home/ubuntu/finbotaiagent"
+    
+    - name: Deploy application to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        script: |
+          # Navigate to project directory
+          cd /home/ubuntu/finbotaiagent
+          
+          # Make scripts executable
+          chmod +x deployment/scripts/*.sh
+          chmod +x deployment/configs/*.sh
+          chmod +x scripts/*.sh
+          
+          # Create application environment file
+          echo "🔧 Creating application environment file..."
+          cat > .env << EOF
+          # Database Configuration (loaded from .env.database)
+          DB_HOST=\$(grep DB_HOST .env.database | cut -d'=' -f2)
+          DB_USERNAME=\$(grep DB_USERNAME .env.database | cut -d'=' -f2)
+          DB_PASSWORD=\$(grep DB_PASSWORD .env.database | cut -d'=' -f2)
+          DB_NAME=\$(grep DB_NAME .env.database | cut -d'=' -f2)
+          
+          # Security Configuration
+          API_KEY=${{ secrets.API_KEY }}
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          
+          # Application Configuration
+          ASPNETCORE_ENVIRONMENT=Production
+          ASPNETCORE_URLS=http://+:8080
+          
+          # Performance Settings
+          ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections=100
+          ASPNETCORE_Kestrel__Limits__MaxConcurrentUpgradedConnections=100
+          EOF
+          
+          echo "✅ Application environment file created"
+          
+          # Use container manager to stop existing application
+          echo "🛑 Stopping existing application..."
+          ./deployment/scripts/container-manager.sh stop || true
+          
+          # Build and start new application
+          echo "🔨 Building and starting application..."
+          docker-compose build
+          docker-compose up -d
+          
+          # Set up external key management
+          echo "🔐 Setting up external key management..."
+          docker exec ${{ env.CONTAINER_NAME }} mkdir -p /app/secrets
+          echo "${{ secrets.API_KEY }}" | docker exec -i ${{ env.CONTAINER_NAME }} tee /app/secrets/api-key.txt > /dev/null
+          echo "${{ secrets.JWT_SECRET_KEY }}" | docker exec -i ${{ env.CONTAINER_NAME }} tee /app/secrets/jwt-secret.txt > /dev/null
+          docker exec ${{ env.CONTAINER_NAME }} chmod 600 /app/secrets/api-key.txt
+          docker exec ${{ env.CONTAINER_NAME }} chmod 600 /app/secrets/jwt-secret.txt
+          echo "✅ External key management configured"
+          
+          # Wait for application to start
+          echo "⏳ Waiting for application to start..."
+          sleep 30
+          
+          # Verify deployment
+          echo "🔍 Verifying deployment..."
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Deployment successful!"
+            
+            # Test API authentication
+            echo "🔒 Testing API authentication..."
+            if curl -f -H "X-API-Key: ${{ secrets.API_KEY }}" http://localhost:8080/api/expenses; then
+              echo "✅ API authentication working!"
+            else
+              echo "⚠️ API authentication test failed - check API key configuration"
+            fi
+            
+            # Test OAuth token generation
+            echo "🔑 Testing OAuth token generation..."
+            if curl -s -X POST http://localhost:8080/oauth/token \
+              -H "Content-Type: application/json" \
+              -d '{"grant_type":"client_credentials","client_id":"copilot-studio-client","client_secret":"copilot-studio-secret-12345","scope":"api.read api.write"}' \
+              | grep -q "access_token"; then
+              echo "✅ OAuth token generation working!"
+            else
+              echo "⚠️ OAuth token generation test failed - check JWT configuration"
+            fi
+            
+          else
+            echo "❌ Deployment failed!"
+            echo "📋 Container logs:"
+            docker-compose logs ${{ env.CONTAINER_NAME }}
+            exit 1
+          fi
+
+  # Post-Deployment Verification
+  verify-deployment:
+    name: Verify Deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Verify application health
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        script: |
+          # Show application status
+          ./deployment/scripts/container-manager.sh status
+          
+          # Test all endpoints
+          echo "🧪 Testing all endpoints..."
+          
+          # Health check
+          curl -f http://localhost:8080/health && echo "✅ Health check passed"
+          
+          # API authentication test
+          curl -f -H "X-API-Key: ${{ secrets.API_KEY }}" http://localhost:8080/api/expenses && echo "✅ API authentication passed"
+          
+          # OAuth token test
+          curl -s -X POST http://localhost:8080/oauth/token \
+            -H "Content-Type: application/json" \
+            -d '{"grant_type":"client_credentials","client_id":"copilot-studio-client","client_secret":"copilot-studio-secret-12345","scope":"api.read api.write"}' \
+            | grep -q "access_token" && echo "✅ OAuth token generation passed"
+          
+          echo "🎉 All verification tests passed!"
+
+  # Cleanup Job (on failure)
+  cleanup-on-failure:
+    name: Cleanup on Failure
+    needs: [deploy, verify-deployment]
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Cleanup failed deployment
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: ${{ secrets.EC2_PORT || 22 }}
+        script: |
+          # Clean up failed deployment
+          ./deployment/scripts/container-manager.sh cleanup
+          
+          # Show logs for debugging
+          echo "📋 Application logs for debugging:"
+          ./deployment/scripts/container-manager.sh logs 100

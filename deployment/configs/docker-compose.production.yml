@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - BUILD_ENV=production
     container_name: finbotaiagent
     restart: unless-stopped
     ports:
