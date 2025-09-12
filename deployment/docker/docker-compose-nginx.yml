@@ -1,0 +1,127 @@
+# Docker Compose for FinBotAiAgent with Nginx Load Balancer
+# Supports both GitHub Actions (port 8080) and AWS CodePipeline (port 8081)
+
+version: '3.8'
+
+services:
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: finbotaiagent-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"  # For future HTTPS
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - finbotaiagent-github
+      - finbotaiagent-codepipeline
+    networks:
+      - finbot-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # GitHub Actions Deployment (Port 8080)
+  finbotaiagent-github:
+    image: finbotaiagent:latest
+    container_name: finbotaiagent-github
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - DB_HOST=host.docker.internal
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    networks:
+      - finbot-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/weatherforecast"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "deployment.method=github-actions"
+      - "service.port=8080"
+
+  # AWS CodePipeline Deployment (Port 8081)
+  finbotaiagent-codepipeline:
+    image: finbotaiagent:latest
+    container_name: finbotaiagent-codepipeline
+    restart: unless-stopped
+    ports:
+      - "8081:8080"  # Maps internal 8080 to external 8081
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - DB_HOST=host.docker.internal
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    networks:
+      - finbot-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/weatherforecast"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "deployment.method=codepipeline"
+      - "service.port=8081"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: finbotaiagent-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - finbot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  finbot-network:
+    driver: bridge
+    name: finbotaiagent-network
+
+volumes:
+  postgres_data:
+    name: finbotaiagent-postgres-data
