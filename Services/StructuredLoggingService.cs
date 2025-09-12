@@ -177,11 +177,11 @@ public class StructuredLoggingService : IStructuredLoggingService
 
     private static string GetApplicationVersion()
     {
-        return typeof(Program).Assembly.GetName().Version?.ToString() ?? "Unknown";
+        return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "Unknown";
     }
 
     private static DateTime GetBuildDate()
     {
-        return File.GetCreationTime(typeof(Program).Assembly.Location);
+        return File.GetCreationTime(System.Reflection.Assembly.GetExecutingAssembly().Location);
     }
 } 
