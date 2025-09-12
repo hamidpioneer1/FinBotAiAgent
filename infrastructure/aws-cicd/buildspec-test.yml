@@ -1,0 +1,49 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      dotnet: 9.0
+    commands:
+      - echo Installing dependencies...
+      - echo Installing .NET 9.0 SDK...
+      - curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --version 9.0.0
+      - export PATH="$PATH:/root/.dotnet"
+      - dotnet --version
+
+  pre_build:
+    commands:
+      - echo Restoring dependencies...
+      - dotnet restore
+      - echo Pre-build phase completed on `date`
+
+  build:
+    commands:
+      - echo Building the application...
+      - dotnet build --configuration Release --no-restore
+      - echo Build completed on `date`
+
+  test:
+    commands:
+      - echo Running unit tests...
+      - dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      - echo Test phase completed on `date`
+
+  post_build:
+    commands:
+      - echo Installing security scanning tools...
+      - # Install security scanning tools
+      - echo Running security scan...
+      - # Add security scanning commands here
+      - echo Post-build phase completed on `date`
+
+reports:
+  test-reports:
+    files:
+      - '**/*.trx'
+    base-directory: '.'
+
+artifacts:
+  files:
+    - '**/*'
+  name: test-artifacts-$(date +%Y-%m-%d)

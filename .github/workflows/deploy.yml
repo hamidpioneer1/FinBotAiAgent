@@ -1,10 +1,12 @@
 name: Deploy to AWS EC2
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+# GitHub Actions CI/CD DISABLED - Using AWS CodePipeline instead
+# To re-enable: Uncomment the lines below and remove this comment block
+# on:
+#   push:
+#     branches: [ main ]
+#   pull_request:
+#     branches: [ main ]
 
 jobs:
   test:
@@ -211,4 +213,4 @@ jobs:
             echo "📋 Full container logs:"
             docker-compose logs
             exit 1
-          fi 
+          fi

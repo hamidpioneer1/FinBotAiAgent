@@ -1,0 +1,59 @@
+# Example Terraform variables file for FinBotAiAgent CI/CD
+# Copy this file to terraform.tfvars and update the values
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Project Configuration
+project_name = "finbotaiagent"
+environment  = "prod"
+
+# GitHub Configuration
+github_owner = "your-github-username"
+github_repo  = "FinBotAiAgent"
+github_branch = "main"
+github_token = "ghp_your_github_personal_access_token_here"
+
+# EC2 Configuration for CodePipeline Deployment
+ec2_instance_id = "i-1234567890abcdef0"  # Your existing EC2 instance ID
+ec2_ssh_key_name = "your-key-pair-name"  # Your EC2 key pair name
+ec2_security_group_id = "sg-12345678"    # Your EC2 security group ID
+
+# Database Configuration (for SSM Parameters and Secrets Manager)
+# These will be created separately or you can provide existing ones
+# The application expects these parameters to exist:
+# - /finbotaiagent/db/host
+# - /finbotaiagent/db/username  
+# - /finbotaiagent/db/name
+# - finbotaiagent/db/password (in Secrets Manager)
+
+# CodeBuild Configuration
+codebuild_compute_type      = "BUILD_GENERAL1_MEDIUM"
+codebuild_test_compute_type = "BUILD_GENERAL1_SMALL"
+build_timeout              = 60
+test_timeout               = 30
+
+# Pipeline Configuration
+enable_manual_approval = true
+approval_sns_topic_arn = ""  # Optional: SNS topic for approval notifications
+
+# VPC Configuration (Optional)
+enable_vpc           = false
+vpc_id              = ""
+subnet_ids          = []
+security_group_ids  = []
+
+# ECR Configuration
+enable_ecr_scanning      = true
+ecr_image_retention_count = 10
+
+# Artifacts Configuration
+artifacts_retention_days = 30
+
+# Additional Tags
+tags = {
+  Owner       = "DevOps Team"
+  Project     = "FinBotAiAgent"
+  Environment = "Production"
+  CostCenter  = "Engineering"
+}

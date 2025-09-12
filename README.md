@@ -1,274 +1,323 @@
-# FinBot AI Agent - .NET 9 Web API
+# FinBotAiAgent
 
-A minimal .NET 9 web API for financial bot operations with PostgreSQL integration.
+**Dual deployment .NET web service with GitHub Actions and AWS CodePipeline**
 
-## 🔐 Security Configuration
+A comprehensive .NET 9.0 web service that demonstrates dual deployment strategies using both GitHub Actions and AWS CodePipeline on the same EC2 instance, staying within AWS Free Tier limits.
 
-**Important**: This application uses secure configuration management. See [SECURITY_SETUP.md](SECURITY_SETUP.md) for detailed instructions on:
+## 🎯 Project Overview
 
-- Setting up User Secrets for local development
-- Configuring environment variables for production
-- Security best practices
-- Troubleshooting guide
+This project showcases a modern .NET web service with:
+- **Dual deployment** on the same EC2 instance
+- **Port 8080**: GitHub Actions deployment
+- **Port 8081**: AWS CodePipeline deployment
+- **Zero additional cost** (within AWS Free Tier)
+- **Comprehensive documentation** for all skill levels
 
-**For Production Deployment**: See [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md) for setting up GitHub Secrets for secure CI/CD deployment to AWS EC2.
+## 🏗️ Project Structure
 
-### Quick Security Setup
-
-**For Local Development:**
-```bash
-# Initialize User Secrets
-dotnet user-secrets init
-
-# Add your database connection string
-dotnet user-secrets set "ConnectionStrings:PostgreSql" "Host=localhost;Username=postgres;Password=your_password;Database=finbotdb"
 ```
-
-**For Production:**
-Update the environment variables in `docker-compose.yml` with your actual database credentials.
+FinBotAiAgent/
+├── 📁 src/                          # Source code
+│   ├── Program.cs                   # Main application entry point
+│   ├── Configuration/               # Configuration classes
+│   │   ├── DatabaseSettings.cs
+│   │   └── LoggingSettings.cs
+│   ├── Services/                    # Application services
+│   │   └── StructuredLoggingService.cs
+│   └── Properties/
+│       └── launchSettings.json
+├── 📁 infrastructure/               # Infrastructure as Code
+│   └── aws-cicd/                   # AWS CI/CD pipeline
+│       ├── main.tf                 # Terraform main configuration
+│       ├── variables.tf            # Terraform variables
+│       ├── outputs.tf              # Terraform outputs
+│       ├── terraform.tf            # Terraform provider config
+│       ├── terraform.tfvars.example # Example variables
+│       ├── buildspec.yml           # CodeBuild build spec
+│       ├── buildspec-test.yml      # CodeBuild test spec
+│       ├── buildspec-deploy.yml    # EC2 deployment spec
+│       ├── setup-dual-deployment.sh # Automated setup script
+│       └── iam-policies.json       # IAM policies reference
+├── 📁 deployment/                   # Deployment configurations
+│   ├── docker/                     # Docker configurations
+│   │   ├── Dockerfile
+│   │   ├── docker-compose.yml
+│   │   └── nginx.conf
+│   └── scripts/                    # Deployment scripts
+│       ├── deploy.sh
+│       ├── setup-github-secrets.sh
+│       ├── verify-deployment.sh
+│       └── verify-network.sh
+├── 📁 config/                      # Configuration files
+│   ├── appsettings.json
+│   ├── appsettings.Development.json
+│   ├── appsettings.Production.json
+│   └── env.example
+├── 📁 docs/                        # Documentation
+│   ├── aws-cicd/                   # AWS CI/CD documentation
+│   │   ├── README.md               # Main entry point
+│   │   ├── DEPLOYMENT_README.md    # Beginner's guide
+│   │   ├── EC2_DUAL_DEPLOYMENT_GUIDE.md # Technical reference
+│   │   ├── BEST_PRACTICES.md       # DevOps best practices
+│   │   ├── MIGRATION_GUIDE.md      # Migration guide
+│   │   └── DOCUMENTATION_STRUCTURE.md # Doc overview
+│   ├── deployment/                 # Deployment documentation
+│   │   ├── GITHUB_SECRETS_SETUP.md
+│   │   ├── PRODUCTION_DEPLOYMENT_GUIDE.md
+│   │   ├── SECURITY_SETUP.md
+│   │   └── SECURITY_SUMMARY.md
+│   └── scripts/                    # Script documentation
+├── 📁 logs/                        # Application logs
+├── 📄 FinBotAiAgent.csproj         # .NET project file
+├── 📄 FinBotAiAgent.sln            # Visual Studio solution
+├── 📄 FinBotAiAgent.http           # HTTP test file
+└── 📄 README.md                    # This file
+```
 
 ## 🚀 Quick Start
 
-### Local Development
+### For Beginners (Zero AWS Knowledge)
+👉 **[docs/aws-cicd/DEPLOYMENT_README.md](docs/aws-cicd/DEPLOYMENT_README.md)** - Complete step-by-step guide
+
+### For Experienced Developers
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd FinBotAiAgent
+# 1. Get your EC2 information
+aws ec2 describe-instances --query 'Reservations[].Instances[?State.Name==`running`].[InstanceId,PublicIpAddress,KeyName,SecurityGroups[0].GroupId]' --output table
 
-# Set up User Secrets (see SECURITY_SETUP.md)
-dotnet user-secrets init
-dotnet user-secrets set "ConnectionStrings:PostgreSql" "your-connection-string"
+# 2. Run the setup script
+./infrastructure/aws-cicd/setup-dual-deployment.sh \
+  -o your-github-username \
+  -t your-github-token \
+  --ec2-instance-id i-1234567890abcdef0 \
+  --ec2-ssh-key-name your-key-pair \
+  --ec2-security-group-id sg-12345678
 
-# Run locally
-dotnet run
-
-# Or with Docker
-docker-compose up
+# 3. Push code to trigger deployments
+git add .
+git commit -m "Deploy dual deployment setup"
+git push origin main
 ```
 
-### Production Deployment
+## 📊 Deployment Architecture
 
-#### Prerequisites
-- Ubuntu 20.04+ EC2 instance
-- Docker and Docker Compose installed
-- Nginx for reverse proxy
-- Domain name (optional)
-- GitHub repository with GitHub Secrets configured
-
-#### Step-by-Step Deployment
-
-**Option 1: Automated Deployment (Recommended)**
-1. **Set up GitHub Secrets** - Follow [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md)
-2. **Push to main branch** - Deployment happens automatically via GitHub Actions
-3. **Monitor deployment** - Check Actions tab in GitHub repository
-
-**Option 2: Manual Deployment**
-1. **EC2 Instance Setup**
-```bash
-# Connect to your EC2 instance
-ssh -i your-key.pem ubuntu@your-ec2-ip
-
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Install Nginx
-sudo apt install -y nginx
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   GitHub Repo   │    │   AWS CodeBuild  │    │   EC2 Instance  │
+│                 │───▶│                  │───▶│                 │
+│                 │    │  - Build & Test  │    │  Port 8081      │
+│                 │    │  - Docker Image  │    │  (CodePipeline) │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌──────────────────┐             │
+         │              │   ECR Registry   │             │
+         │              │                  │             │
+         │              │  - Store Images  │             │
+         └──────────────┼──────────────────┘             │
+                        │                                │
+         ┌──────────────▼────────────────────────────────┘
+         │         EC2 Instance (Same)                   │
+         │                                               │
+         │  - GitHub Actions Deploy (Port 8080)         │
+         │  - CodePipeline Deploy (Port 8081)           │
+         └───────────────────────────────────────────────┘
 ```
 
-2. **Deploy Application**
+## 💰 Cost Analysis
+
+**Total monthly cost: $0** (within AWS Free Tier limits)
+
+| Service | Free Tier Limit | Usage | Cost |
+|---------|----------------|-------|------|
+| **EC2 t2.micro** | 750 hours/month | ~24 hours/day | **$0** |
+| **ECR** | 500 MB storage | ~100 MB per image | **$0** |
+| **CodeBuild** | 100 build minutes/month | ~5 minutes per build | **$0** |
+| **CodePipeline** | 1 active pipeline | 1 pipeline | **$0** |
+| **S3** | 5 GB storage | ~1 GB for artifacts | **$0** |
+
+## 🔧 Prerequisites
+
+- AWS account (free tier eligible)
+- GitHub account with repository access
+- EC2 instance running (t2.micro recommended)
+- AWS CLI, Terraform, and Docker installed
+- Basic terminal/command line knowledge
+
+## 📚 Documentation
+
+### For Different Audiences
+
+1. **[docs/aws-cicd/DEPLOYMENT_README.md](docs/aws-cicd/DEPLOYMENT_README.md)** - Complete beginner's guide
+   - Zero AWS knowledge required
+   - Step-by-step instructions
+   - Troubleshooting section
+   - Copy-paste commands
+
+2. **[docs/aws-cicd/EC2_DUAL_DEPLOYMENT_GUIDE.md](docs/aws-cicd/EC2_DUAL_DEPLOYMENT_GUIDE.md)** - Technical reference
+   - Detailed configuration options
+   - Advanced troubleshooting
+   - Architecture deep-dive
+   - Best practices
+
+3. **[docs/aws-cicd/BEST_PRACTICES.md](docs/aws-cicd/BEST_PRACTICES.md)** - DevOps best practices
+   - Security recommendations
+   - Monitoring setup
+   - Cost optimization
+   - Maintenance procedures
+
+4. **[docs/aws-cicd/MIGRATION_GUIDE.md](docs/aws-cicd/MIGRATION_GUIDE.md)** - Migration from GitHub Actions
+   - Step-by-step migration
+   - Rollback procedures
+   - Testing strategies
+
+## 🔍 Monitoring & Troubleshooting
+
+### View Application Status
 ```bash
-# Clone repository
-git clone <your-repo-url> /home/ubuntu/finbotaiagent
-cd /home/ubuntu/finbotaiagent
-
-# Make deployment script executable
-chmod +x deploy.sh
-
-# Run deployment
-./deploy.sh
+# Test both deployments
+curl http://your-ec2-ip:8080/weatherforecast  # GitHub Actions
+curl http://your-ec2-ip:8081/weatherforecast  # CodePipeline
 ```
 
-3. **Configure Nginx**
-```bash
-# Copy nginx configuration
-sudo cp nginx.conf /etc/nginx/sites-available/finbotaiagent
-sudo ln -s /etc/nginx/sites-available/finbotaiagent /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
-
-# Test and reload nginx
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-4. **Setup SSL (Optional)**
-```bash
-# Install Certbot
-sudo apt install -y certbot python3-certbot-nginx
-
-# Get SSL certificate
-sudo certbot --nginx -d your-domain.com
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-- `ASPNETCORE_ENVIRONMENT`: Set to `Production`
-- `ASPNETCORE_URLS`: Set to `http://+:8080`
-- Database connection string in `appsettings.Production.json`
-
-### Security Best Practices
-- ✅ Non-root Docker user
-- ✅ Security headers in Nginx
-- ✅ Resource limits in Docker
-- ✅ Health checks
-- ✅ Logging configuration
-
-## 📊 Monitoring
-
-### Health Check
-```bash
-# Check application health
-curl http://your-domain.com/health
-
-# Check container status
-docker-compose ps
-
-# View logs
-docker-compose logs -f finbotaiagent
-```
-
-### Performance Monitoring
-```bash
-# Monitor resource usage
-docker stats
-
-# Check disk usage
-df -h
-
-# Monitor memory
-free -h
-```
-
-## 🔄 CI/CD Pipeline
-
-### GitHub Actions Setup
-
-1. **Repository Secrets**
-Add these secrets to your GitHub repository:
-- `EC2_HOST`: Your EC2 public IP
-- `EC2_USERNAME`: ubuntu
-- `EC2_SSH_KEY`: Your private SSH key
-
-2. **Automatic Deployment**
-- Push to `main` branch triggers deployment
-- Pull requests run tests only
-- Deployment includes health checks
-
-### Manual Deployment
+### View Logs
 ```bash
 # SSH to EC2
 ssh -i your-key.pem ubuntu@your-ec2-ip
 
-# Navigate to project
-cd /home/ubuntu/finbotaiagent
-
-# Pull latest changes
-git pull origin main
-
-# Deploy
-./deploy.sh
+# View container logs
+sudo docker logs finbotaiagent              # GitHub Actions
+sudo docker logs finbotaiagent-codepipeline # CodePipeline
 ```
 
-## 🐳 Docker Commands
+### Check Pipeline Status
+```bash
+# CodePipeline status
+aws codepipeline get-pipeline-state --name finbotaiagent-prod-pipeline
+
+# CodeBuild logs
+aws logs describe-log-groups --log-group-name-prefix "/aws/codebuild/finbotaiagent"
+```
+
+## 🛠️ Development
+
+### Local Development
+```bash
+# Restore dependencies
+dotnet restore
+
+# Build application
+dotnet build
+
+# Run application
+dotnet run
+
+# Run tests
+dotnet test
+```
+
+### Docker Development
+```bash
+# Build Docker image
+docker build -t finbotaiagent .
+
+# Run container
+docker run -p 8080:8080 finbotaiagent
+```
+
+## 🔒 Security Features
+
+- **IAM Roles**: Least privilege access
+- **Secrets Management**: AWS Secrets Manager + SSM Parameter Store
+- **Network Security**: Security groups with minimal required ports
+- **Encryption**: All secrets encrypted at rest
+- **Audit Logging**: CloudTrail integration
+
+## 🚀 Deployment Options
+
+### 1. Automatic Deployment
+- Triggered by code push to main branch
+- Both deployments run simultaneously
+- Independent container management
+
+### 2. Manual Deployment
+```bash
+# Deploy specific image tag
+./infrastructure/aws-cicd/setup-dual-deployment.sh -t v1.2.3
+
+# Deploy to different environment
+./infrastructure/aws-cicd/setup-dual-deployment.sh -e staging
+```
+
+### 3. Blue/Green Deployment
+- Use different ports for zero-downtime deployments
+- Test new version on port 8082
+- Switch traffic when ready
+
+## 🔄 Making Changes
+
+**To update your application:**
+
+1. Make code changes
+2. Commit and push to GitHub:
+   ```bash
+   git add .
+   git commit -m "Update application"
+   git push origin main
+   ```
+3. Both deployments will automatically update
+
+**To stop deployments:**
+```bash
+# SSH to EC2
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Stop containers
+sudo docker stop finbotaiagent finbotaiagent-codepipeline
+```
+
+## 🧹 Cleanup
+
+**To remove everything:**
 
 ```bash
-# Build image
-docker-compose build
+# Destroy AWS infrastructure
+cd infrastructure/aws-cicd
+terraform destroy
 
-# Start services
-docker-compose up -d
-
-# Stop services
-docker-compose down
-
-# View logs
-docker-compose logs -f
-
-# Update and restart
-docker-compose pull && docker-compose up -d
+# Stop containers on EC2
+ssh -i your-key.pem ubuntu@your-ec2-ip
+sudo docker stop finbotaiagent finbotaiagent-codepipeline
+sudo docker rm finbotaiagent finbotaiagent-codepipeline
 ```
 
-## 📝 API Endpoints
+## 🆘 Support
 
-- `GET /weatherforecast` - Sample weather data
-- `POST /api/expenses` - Create expense
-- `GET /api/expenses/{id}` - Get expense by ID
-- `GET /api/policies` - Get expense policies
-- `GET /swagger` - API documentation
+1. **Check the logs** using the commands above
+2. **Verify AWS credentials** are configured correctly
+3. **Ensure EC2 instance** is running and accessible
+4. **Check security group** allows ports 8080 and 8081
+5. **Verify database** is running and accessible
 
-## 🔍 Troubleshooting
+## 📈 Next Steps
 
-### Common Issues
+1. **Set up monitoring**: Configure CloudWatch alarms and dashboards
+2. **Implement CI/CD**: Add automated testing and quality gates
+3. **Add security scanning**: Integrate vulnerability scanning
+4. **Optimize performance**: Monitor resource usage
+5. **Add load balancing**: Implement reverse proxy for traffic distribution
 
-1. **Application not starting**
-```bash
-# Check logs
-docker-compose logs finbotaiagent
+## 🤝 Contributing
 
-# Check if port is in use
-sudo netstat -tlnp | grep 8080
-```
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test the pipeline
+5. Submit a pull request
 
-2. **Database connection issues**
-```bash
-# Test database connection
-docker exec -it finbotaiagent curl -f http://localhost:8080/weatherforecast
-```
+## 📄 License
 
-3. **Nginx issues**
-```bash
-# Check nginx status
-sudo systemctl status nginx
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-# Check nginx configuration
-sudo nginx -t
+---
 
-# View nginx logs
-sudo tail -f /var/log/nginx/error.log
-```
-
-## 📈 Performance Optimization
-
-- Connection pooling enabled
-- Gzip compression
-- Resource limits configured
-- Health checks implemented
-- Log rotation enabled
-
-## 🔒 Security Checklist
-
-- [ ] Non-root Docker user
-- [ ] Security headers configured
-- [ ] Resource limits set
-- [ ] Health checks enabled
-- [ ] Logging configured
-- [ ] SSL certificate (if using domain)
-- [ ] Firewall rules configured
-- [ ] Regular security updates
-
-## 📞 Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review container logs
-3. Check GitHub Issues
-4. Contact the development team 
+**Ready to deploy? Start with [docs/aws-cicd/DEPLOYMENT_README.md](docs/aws-cicd/DEPLOYMENT_README.md) for a complete step-by-step guide! 🚀**
