@@ -2,11 +2,11 @@ name: Deploy to AWS EC2
 
 # GitHub Actions CI/CD DISABLED - Using AWS CodePipeline instead
 # To re-enable: Uncomment the lines below and remove this comment block
-# on:
-#   push:
-#     branches: [ main ]
-#   pull_request:
-#     branches: [ main ]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
